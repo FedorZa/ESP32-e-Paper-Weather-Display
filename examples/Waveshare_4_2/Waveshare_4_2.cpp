@@ -17,6 +17,7 @@
   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
   See more at http://www.dsbird.org.uk
 */
+#include <Arduino.h>
 #include "owm_credentials.h"  // See 'owm_credentials' tab and enter your OWM API key and set the Wifi SSID and PASSWORD
 #include <ArduinoJson.h>       // https://github.com/bblanchon/ArduinoJson
 #include <WiFi.h>              // Built-in
@@ -52,13 +53,13 @@ static const uint8_t EPD_MOSI = 23; // to EPD DIN
 // Connections for e.g. Waveshare ESP32 e-Paper Driver Board
 //static const uint8_t EPD_BUSY = 25;
 //static const uint8_t EPD_CS   = 15;
-//static const uint8_t EPD_RST  = 26; 
-//static const uint8_t EPD_DC   = 27; 
+//static const uint8_t EPD_RST  = 26;
+//static const uint8_t EPD_DC   = 27;
 //static const uint8_t EPD_SCK  = 13;
 //static const uint8_t EPD_MISO = 12; // Master-In Slave-Out not used, as no data from display
 //static const uint8_t EPD_MOSI = 14;
 
-GxEPD2_BW<GxEPD2_420, GxEPD2_420::HEIGHT> display(GxEPD2_420(/*CS=D8*/ EPD_CS, /*DC=D3*/ EPD_DC, /*RST=D4*/ EPD_RST, /*BUSY=D2*/ EPD_BUSY));
+GxEPD2_BW<GxEPD2_420_GDEY042T81, GxEPD2_420_GDEY042T81::HEIGHT> display(GxEPD2_420_GDEY042T81(/*CS=D8*/ EPD_CS, /*DC=D3*/ EPD_DC, /*RST=D4*/ EPD_RST, /*BUSY=D2*/ EPD_BUSY));
 //GxEPD2_BW<GxEPD2_420_GDEY042T81, GxEPD2_420_GDEY042T81::HEIGHT> display(GxEPD2_420_GDEY042T81(/*CS=D8*/ EPD_CS, /*DC=D3*/ EPD_DC, /*RST=D4*/ EPD_RST, /*BUSY=D2*/ EPD_BUSY));
 // For the WeAct Studio 4.2" Epaper Module you need to replace GxEPD2_420 with GxEPD2_420_GDEY042T81
 U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;  // Select u8g2 font from here: https://github.com/olikraus/u8g2/wiki/fntlistall
@@ -102,6 +103,54 @@ float snow_readings[max_readings]        = {0};
 long SleepDuration = 30; // Sleep time in minutes, aligned to the nearest minute boundary, so if 30 will always update at 00 or 30 past the hour
 int  WakeupTime    = 7;  // Don't wakeup until after 07:00 to save battery power
 int  SleepTime     = 23; // Sleep after (23+1) 00:00 to save battery power
+
+void BeginSleep();
+void DisplayWeather();
+void DrawHeadingSection();
+void DrawMainWeatherSection(int x, int y);
+void DrawForecastSection(int x, int y);
+void DrawForecastWeather(int x, int y, int index);
+void DrawMainWx(int x, int y);
+void DisplayDisplayWindSection(int x, int y, float angle, float windspeed, int Cradius);
+String WindDegToDirection(float winddirection);
+void DrawPressureAndTrend(int x, int y, float pressure, String slope);
+void DisplayPrecipitationSection(int x, int y);
+void DrawAstronomySection(int x, int y);
+void DrawMoon(int x, int y, int dd, int mm, int yy, String hemisphere);
+String MoonPhase(int d, int m, int y);
+void arrow(int x, int y, int asize, float aangle, int pwidth, int plength);
+void DisplayWXicon(int x, int y, String IconName, bool IconSize);
+uint8_t StartWiFi();
+void StopWiFi();
+boolean SetupTime();
+boolean UpdateLocalTime();
+void addcloud(int x, int y, int scale, int linesize);
+void addraindrop(int x, int y, int scale);
+void addrain(int x, int y, int scale, bool IconSize);
+void addsnow(int x, int y, int scale, bool IconSize);
+void addtstorm(int x, int y, int scale);
+void addsun(int x, int y, int scale, bool IconSize);
+void addfog(int x, int y, int scale, int linesize, bool IconSize);
+void addmoon(int x, int y, int scale, bool IconSize);
+void Sunny(int x, int y, bool IconSize, String IconName);
+void MostlySunny(int x, int y, bool IconSize, String IconName);
+void MostlyCloudy(int x, int y, bool IconSize, String IconName);
+void Cloudy(int x, int y, bool IconSize, String IconName);
+void Rain(int x, int y, bool IconSize, String IconName);
+void ExpectRain(int x, int y, bool IconSize, String IconName);
+void ChanceRain(int x, int y, bool IconSize, String IconName);
+void Tstorms(int x, int y, bool IconSize, String IconName);
+void Snow(int x, int y, bool IconSize, String IconName);
+void Fog(int x, int y, bool IconSize, String IconName);
+void Haze(int x, int y, bool IconSize, String IconName);
+void CloudCover(int x, int y, int CCover);
+void Visibility(int x, int y, String Visi);
+void DrawBattery(int x, int y);
+void DrawGraph(int x_pos, int y_pos, int gwidth, int gheight, float Y1Min, float Y1Max, String title, float DataArray[], int readings, boolean auto_scale, boolean barchart_mode);
+void drawString(int x, int y, String text, alignment align);
+void drawStringMaxWidth(int x, int y, unsigned int text_width, String text, alignment align);
+void InitialiseDisplay();
+void Nodata(int x, int y, bool IconSize, String IconName);
 
 //#########################################################################################
 void setup() {
@@ -815,7 +864,7 @@ void DrawGraph(int x_pos, int y_pos, int gwidth, int gheight, float Y1Min, float
     if (barchart_mode) {
       x2 = x_pos + gx * (gwidth / readings) + 2;
       display.fillRect(x2, y2, (gwidth / readings) - 2, y_pos + gheight - y2 + 2, GxEPD_BLACK);
-    } 
+    }
     else
     {
       x2 = x_pos + gx * gwidth / (readings - 1) + 1; // max_readings is the global variable that sets the maximum data that can be plotted
@@ -907,10 +956,10 @@ void InitialiseDisplay() {
 
   Version 12.3
   1. Added 20-secs to allow for slow ESP32 RTC timers
-  
+
   Version 12.4
   1. Improved graph drawing function for negative numbers Line 808
-  
+
   Version 12.5
   1. Modified for GxEPD2 changes
 */
